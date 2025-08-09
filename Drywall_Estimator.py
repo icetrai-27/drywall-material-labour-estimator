@@ -15,8 +15,8 @@ st.caption("Calculate drywall surface areas for walls and ceilings, with opening
 with st.sidebar:
     st.header("Options")
     include_waste = st.checkbox("Add waste percentage", value=True)
-    waste_pct = (
-        st.number_input(
+    if include_waste:
+        waste_pct = st.number_input(
             "Waste %",
             min_value=0.0,
             max_value=50.0,
@@ -24,9 +24,8 @@ with st.sidebar:
             step=0.5,
             help="Applied to wall + ceiling net areas",
         )
-        if include_waste
-        else 0.0
-    )
+    else:
+        waste_pct = 0.0
     show_intermediate = st.checkbox("Show intermediate math", value=False)
 
 st.markdown("---")
@@ -128,9 +127,9 @@ for i in range(int(room_count)):
 
         if show_intermediate:
             st.caption(
-                f"Perimeter: {perimeter:.2f} ft | Wall gross: {wall_area_gross:.2f} ft² | "
-                f"Openings: {openings_area:.2f} ft² | Net walls: {wall_area_net:.2f} ft² | "
-                f"Ceiling: {ceiling_area:.2f} ft²"
+                f"Perimeter: {perimeter:.2f} ft | Wall gross: {wall_area_gross:.2f} ft^2 | "
+                f"Openings: {openings_area:.2f} ft^2 | Net walls: {wall_area_net:.2f} ft^2 | "
+                f"Ceiling: {ceiling_area:.2f} ft^2"
             )
 
 # ===== Summary table =====
@@ -160,12 +159,12 @@ if rooms_data:
         "length_ft": "Length (ft)",
         "width_ft": "Width (ft)",
         "height_ft": "Height (ft)",
-        "wall_area_net_ft2": "Walls (net) ft²",
-        "ceiling_area_ft2": "Ceiling ft²",
-        "total_area_ft2": "Total ft²",
-        "total_area_m2": "Total m²",
-        "total_with_waste_ft2": "Total w/ waste ft²",
-        "total_with_waste_m2": "Total w/ waste m²",
+        "wall_area_net_ft2": "Walls (net) ft^2",
+        "ceiling_area_ft2": "Ceiling ft^2",
+        "total_area_ft2": "Total ft^2",
+        "total_area_m2": "Total m^2",
+        "total_with_waste_ft2": "Total w/ waste ft^2",
+        "total_with_waste_m2": "Total w/ waste m^2",
     }
     df_display = df[show_cols].rename(columns=nice_names)
     st.dataframe(df_display, use_container_width=True)
@@ -177,10 +176,10 @@ if rooms_data:
     total_waste_m2 = total_waste_ft2 * FT2_TO_M2
 
     ctot1, ctot2, ctot3, ctot4 = st.columns(4)
-    ctot1.metric("Grand Total (ft²)", f"{total_ft2:,.2f}")
-    ctot2.metric("Grand Total (m²)", f"{total_m2:,.2f}")
-    ctot3.metric("Grand Total w/ waste (ft²)", f"{total_waste_ft2:,.2f}")
-    ctot4.metric("Grand Total w/ waste (m²)", f"{total_waste_m2:,.2f}")
+    ctot1.metric("Grand Total (ft^2)", f"{total_ft2:,.2f}")
+    ctot2.metric("Grand Total (m^2)", f"{total_m2:,.2f}")
+    ctot3.metric("Grand Total w/ waste (ft^2)", f"{total_waste_ft2:,.2f}")
+    ctot4.metric("Grand Total w/ waste (m^2)", f"{total_waste_m2:,.2f}")
 
     # Downloads
     st.markdown("### Downloads")
@@ -191,17 +190,17 @@ if rooms_data:
     lines = ["Drywall Estimator Summary (per room)"]
     for _, r in df.iterrows():
         lines.append(
-            f"- {r['room']}: Walls {r['wall_area_net_ft2']:.2f} ft², Ceiling {r['ceiling_area_ft2']:.2f} ft², "
-            f"Total {r['total_area_ft2']:.2f} ft² ({r['total_area_ft2']*FT2_TO_M2:.2f} m²)"
+            f"- {r['room']}: Walls {r['wall_area_net_ft2']:.2f} ft^2, "
+            f"Ceiling {r['ceiling_area_ft2']:.2f} ft^2, "
+            f"Total {r['total_area_ft2']:.2f} ft^2 ({r['total_area_ft2']*FT2_TO_M2:.2f} m^2)"
         )
     lines.append("")
-    lines.append(f"Grand Total: {total_ft2:.2f} ft² ({total_m2:.2f} m²)")
+    lines.append(f"Grand Total: {total_ft2:.2f} ft^2 ({total_m2:.2f} m^2)")
     if include_waste:
         lines.append(
-            f"Grand Total w/ {waste_pct:.1f}% waste: {total_waste_ft2:.2f} ft² ({total_waste_m2:.2f} m²)"
+            f"Grand Total w/ {waste_pct:.1f}% waste: {total_waste_ft2:.2f} ft^2 ({total_waste_m2:.2f} m^2)"
         )
-    txt = "
-".join(lines)
+    txt = "\n".join(lines)
     st.download_button("Download TXT (summary)", txt, file_name="drywall_summary.txt", mime="text/plain")
 
 else:
