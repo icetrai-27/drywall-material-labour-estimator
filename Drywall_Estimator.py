@@ -1,6 +1,6 @@
 # drywall_estimator_app.py
 # Standalone Streamlit app to estimate drywall surface area per room (walls + optional ceiling),
-# with per-room exclusions for windows and doors. NOW includes quick-pick wall heights and
+# with per-room exclusions for windows and doors. Now includes quick-pick wall heights and
 # preset door sizes (with a custom option). Outputs SQFT & SQM, per-room breakdown,
 # grand totals, optional waste %, and CSV/TXT downloads.
 
@@ -12,16 +12,16 @@ FT2_TO_M2 = 0.09290304
 # ---- Presets ----
 WALL_HEIGHT_PRESETS = ["8 ft", "9 ft", "10 ft", "12 ft", "14 ft", "Custom"]
 DOOR_PRESETS = [
-    ("24 × 80 in", 24/12, 80/12),
-    ("28 × 80 in", 28/12, 80/12),
-    ("30 × 80 in", 30/12, 80/12),
-    ("32 × 80 in", 32/12, 80/12),
-    ("36 × 80 in", 36/12, 80/12),
+    ("24 x 80 in", 24/12, 80/12),
+    ("28 x 80 in", 28/12, 80/12),
+    ("30 x 80 in", 30/12, 80/12),
+    ("32 x 80 in", 32/12, 80/12),
+    ("36 x 80 in", 36/12, 80/12),
     ("Custom", None, None),
 ]
 
 st.set_page_config(page_title="Drywall Estimator", page_icon="🧱", layout="wide")
-st.title("🧱 Drywall Estimator (per room)")
+st.title("Drywall Estimator (per room)")
 st.caption("Calculate drywall surface areas for walls and ceilings, with openings deducted — exports SQFT & SQM.")
 
 with st.sidebar:
@@ -68,8 +68,12 @@ for i in range(int(room_count)):
             width = st.number_input(f"Width (ft) #{i+1}", min_value=0.0, step=0.1, key=f"wid_{i}")
         with c4:
             # Wall height quick-pick per room
+            default_idx = WALL_HEIGHT_PRESETS.index(f"{int(default_wall_h)} ft") if f"{int(default_wall_h)} ft" in WALL_HEIGHT_PRESETS else len(WALL_HEIGHT_PRESETS)-1
             h_choice = st.selectbox(
-                f"Wall height #{i+1}", WALL_HEIGHT_PRESETS, index=WALL_HEIGHT_PRESETS.index(f"{int(default_wall_h)} ft") if f"{int(default_wall_h)} ft" in WALL_HEIGHT_PRESETS else len(WALL_HEIGHT_PRESETS)-1, key=f"h_choice_{i}"
+                f"Wall height #{i+1}",
+                WALL_HEIGHT_PRESETS,
+                index=default_idx,
+                key=f"h_choice_{i}"
             )
             if h_choice == "Custom":
                 height = st.number_input(
@@ -116,8 +120,12 @@ for i in range(int(room_count)):
                 dc1, dc2, dc3 = st.columns([1.2, 1, 1])
                 with dc1:
                     choice_labels = [label for label, _, _ in DOOR_PRESETS]
+                    default_door_idx = choice_labels.index("30 x 80 in") if "30 x 80 in" in choice_labels else 0
                     door_choice = st.selectbox(
-                        f"Door {d+1} size [R{i+1}]", choice_labels, index=choice_labels.index("30 × 80 in") if "30 × 80 in" in choice_labels else 0, key=f"door_choice_{i}_{d}"
+                        f"Door {d+1} size [R{i+1}]",
+                        choice_labels,
+                        index=default_door_idx,
+                        key=f"door_choice_{i}_{d}"
                     )
                 if door_choice == "Custom":
                     with dc2:
@@ -131,7 +139,6 @@ for i in range(int(room_count)):
                     d_w = d_w_in / 12.0
                     d_h = d_h_in / 12.0
                 else:
-                    # map preset selection to feet
                     preset = next(p for p in DOOR_PRESETS if p[0] == door_choice)
                     d_w, d_h = preset[1], preset[2]
                 doors.append((d_w, d_h))
@@ -165,9 +172,9 @@ for i in range(int(room_count)):
 
         if show_intermediate:
             st.caption(
-                f"Perimeter: {perimeter:.2f} ft | Wall gross: {wall_area_gross:.2f} ft² | "
-                f"Openings: {openings_area:.2f} ft² | Net walls: {wall_area_net:.2f} ft² | "
-                f"Ceiling: {ceiling_area:.2f} ft²"
+                f"Perimeter: {perimeter:.2f} ft | Wall gross: {wall_area_gross:.2f} ft^2 | "
+                f"Openings: {openings_area:.2f} ft^2 | Net walls: {wall_area_net:.2f} ft^2 | "
+                f"Ceiling: {ceiling_area:.2f} ft^2"
             )
 
 # ===== Summary table =====
@@ -197,12 +204,12 @@ if rooms_data:
         "length_ft": "Length (ft)",
         "width_ft": "Width (ft)",
         "height_ft": "Height (ft)",
-        "wall_area_net_ft2": "Walls (net) ft²",
-        "ceiling_area_ft2": "Ceiling ft²",
-        "total_area_ft2": "Total ft²",
-        "total_area_m2": "Total m²",
-        "total_with_waste_ft2": "Total w/ waste ft²",
-        "total_with_waste_m2": "Total w/ waste m²",
+        "wall_area_net_ft2": "Walls (net) ft^2",
+        "ceiling_area_ft2": "Ceiling ft^2",
+        "total_area_ft2": "Total ft^2",
+        "total_area_m2": "Total m^2",
+        "total_with_waste_ft2": "Total w/ waste ft^2",
+        "total_with_waste_m2": "Total w/ waste m^2",
     }
     df_display = df[show_cols].rename(columns=nice_names)
     st.dataframe(df_display, use_container_width=True)
@@ -214,32 +221,31 @@ if rooms_data:
     total_waste_m2 = total_waste_ft2 * FT2_TO_M2
 
     ctot1, ctot2, ctot3, ctot4 = st.columns(4)
-    ctot1.metric("Grand Total (ft²)", f"{total_ft2:,.2f}")
-    ctot2.metric("Grand Total (m²)", f"{total_m2:,.2f}")
-    ctot3.metric("Grand Total w/ waste (ft²)", f"{total_waste_ft2:,.2f}")
-    ctot4.metric("Grand Total w/ waste (m²)", f"{total_waste_m2:,.2f}")
+    ctot1.metric("Grand Total (ft^2)", f"{total_ft2:,.2f}")
+    ctot2.metric("Grand Total (m^2)", f"{total_m2:,.2f}")
+    ctot3.metric("Grand Total w/ waste (ft^2)", f"{total_waste_ft2:,.2f}")
+    ctot4.metric("Grand Total w/ waste (m^2)", f"{total_waste_m2:,.2f}")
 
     # Downloads
     st.markdown("### Downloads")
     csv = df_display.to_csv(index=False).encode("utf-8")
     st.download_button("Download CSV (per-room)", csv, file_name="drywall_per_room.csv", mime="text/csv")
 
-    # Simple TXT summary
+    # Simple TXT summary (ASCII-only to avoid any quote issues)
     lines = ["Drywall Estimator Summary (per room)"]
     for _, r in df.iterrows():
         lines.append(
-            f"- {r['room']}: Walls {r['wall_area_net_ft2']:.2f} ft², "
-            f"Ceiling {r['ceiling_area_ft2']:.2f} ft², "
-            f"Total {r['total_area_ft2']:.2f} ft² ({r['total_area_ft2']*FT2_TO_M2:.2f} m²)"
+            f"- {r['room']}: Walls {r['wall_area_net_ft2']:.2f} ft^2, "
+            f"Ceiling {r['ceiling_area_ft2']:.2f} ft^2, "
+            f"Total {r['total_area_ft2']:.2f} ft^2 ({r['total_area_ft2']*FT2_TO_M2:.2f} m^2)"
         )
     lines.append("")
-    lines.append(f"Grand Total: {total_ft2:.2f} ft² ({total_m2:.2f} m²)")
+    lines.append(f"Grand Total: {total_ft2:.2f} ft^2 ({total_m2:.2f} m^2)")
     if include_waste:
         lines.append(
-            f"Grand Total w/ {waste_pct:.1f}% waste: {total_waste_ft2:.2f} ft² ({total_waste_m2:.2f} m²)"
+            f"Grand Total w/ {waste_pct:.1f}% waste: {total_waste_ft2:.2f} ft^2 ({total_waste_m2:.2f} m^2)"
         )
-    txt = "
-".join(lines)
+    txt = "\n".join(lines)
     st.download_button("Download TXT (summary)", txt, file_name="drywall_summary.txt", mime="text/plain")
 
 else:
