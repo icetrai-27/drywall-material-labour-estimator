@@ -1,7 +1,7 @@
 # drywall_estimator_app.py
 # Drywall estimator with per-room geometry, openings, quick-pick heights, door presets,
 # material takeoff (board, mud, tape, screws, corner bead, optional resilient channel),
-# and pricing (cost per sheet, pot lights, per-ft2/m2, tax %, cash price).
+# unit costs, pricing (area labour per ft2/m2, high-parts labour), tax, and cash price.
 
 import streamlit as st
 import pandas as pd
@@ -43,22 +43,35 @@ with st.sidebar:
     corner_bead_piece_len_ft = st.number_input("Corner bead piece length (ft)", 4.0, 12.0, 8.0, 1.0)
 
     st.markdown("---")
-    st.header("Board & RC Settings")
+    st.header("Board and RC Settings")
     sheet_size = st.selectbox("Sheet size", ["4x8 (32 ft^2)", "4x12 (48 ft^2)"], index=0)
-    cost_per_sheet = st.number_input("Cost per sheet ($)", 0.0, 100.0, 0.0, 0.5)
     include_resilient_channel = st.checkbox("Include Resilient Channel (calculated)", value=False)
     rc_spacing_in = st.selectbox("RC spacing (in)", [16, 24], index=0)
     rc_piece_length_ft = st.number_input("RC piece length (ft)", 8.0, 16.0, 12.0, 1.0)
 
     st.markdown("---")
-    st.header("Pricing")
+    st.header("Unit Costs")
+    cost_per_sheet = st.number_input("Sheet cost ($/sheet)", 0.0, 200.0, 0.0, 0.5)
+    cost_mud_pail = st.number_input("Mud cost ($/pail)", 0.0, 200.0, 0.0, 0.5)
+    cost_tape_roll = st.number_input("Tape cost ($/roll)", 0.0, 100.0, 0.0, 0.5)
+    cost_screws_box = st.number_input("Screws cost ($/box)", 0.0, 200.0, 0.0, 0.5)
+    cost_corner_bead_piece = st.number_input("Corner bead cost ($/piece)", 0.0, 100.0, 0.0, 0.5)
+    cost_rc_piece = st.number_input("Resilient channel cost ($/piece)", 0.0, 100.0, 0.0, 0.5)
     pot_light_count = st.number_input("Pot lights (qty)", min_value=0, step=1, value=0)
     pot_light_cost = st.number_input("Cost per pot light ($)", min_value=0.0, step=1.0, value=0.0)
-    high_areas_ft2 = st.number_input("High areas (extra ft^2 to charge)", min_value=0.0, step=1.0, value=0.0,
-                                     help="Extra tall/complex zones to charge but not add to materials.")
-    price_per_sqft = st.number_input("Price per ft^2 ($)", min_value=0.0, step=0.01, value=0.0)
-    price_per_sqm = st.number_input("Price per m^2 ($)", min_value=0.0, step=0.01, value=0.0)
+
+    st.markdown("---")
+    st.header("Labour Pricing")
+    labour_rate_sqft = st.number_input("Labour rate per ft^2 ($)", 0.0, 100.0, 0.0, 0.01)
+    labour_rate_sqm = st.number_input("Labour rate per m^2 ($)", 0.0, 1000.0, 0.0, 0.01)
+    # High parts labour: choose flat per part or per ft^2 of qualifying area
+    labour_high_part_flat = st.number_input("High-part labour flat ($ per qualifying part)", 0.0, 5000.0, 0.0, 1.0)
+    labour_high_part_rate_sqft = st.number_input("High-part labour rate ($ per ft^2 of qualifying area)", 0.0, 100.0, 0.0, 0.01)
+
+    st.markdown("---")
+    st.header("Tax")
     tax_pct = st.number_input("Tax %", 0.0, 25.0, 13.0, 0.5, help="Ontario HST ~13%")
+    st.caption("Cash price shows subtotal without tax.")
 
 st.markdown("---")
 
@@ -138,7 +151,7 @@ for i in range(int(room_count)):
                     d_w, d_h = preset[1], preset[2]
                 doors.append((d_w, d_h))
 
-        # --- Area calculations ---
+        # --- Areas ---
         perimeter = 2 * (length + width)
         wall_area_gross = perimeter * height
         openings_area = sum(w * h for w, h in windows) + sum(w * h for w, h in doors)
@@ -148,7 +161,7 @@ for i in range(int(room_count)):
         waste_multiplier = 1.0 + (waste_pct / 100.0)
         total_with_waste_ft2 = total_area_ft2 * waste_multiplier
 
-        # Resilient channel LF (if enabled) – rows across width, length per row = room length
+        # Resilient channel LF (if enabled)
         if include_resilient_channel and include_ceiling and width > 0 and length > 0:
             rows = math.floor((width * 12) / rc_spacing_in) + 1
             rc_total_lf += rows * length
@@ -171,6 +184,27 @@ for i in range(int(room_count)):
                 f"Ceiling: {ceiling_area:.2f} ft^2 | Total: {total_area_ft2:.2f} ft^2 | "
                 f"Waste%: {waste_pct:.1f} -> With waste: {total_with_waste_ft2:.2f} ft^2"
             )
+
+# ================= High Parts =================
+st.markdown("---")
+st.subheader("High Parts (charged extras)")
+st.caption("Qualify only if height > 10 ft and area > 64 ft^2. Counted for labour charge, not materials.")
+num_high_parts = st.number_input("Number of high parts", 0, 20, 0, 1)
+high_parts = []
+qualifying_hp_area_ft2 = 0.0
+qualifying_hp_count = 0
+
+for hp in range(num_high_parts):
+    c1, c2 = st.columns(2)
+    with c1:
+        hp_height = st.number_input(f"High part #{hp+1} height (ft)", 0.0, 30.0, 0.0, 0.1, key=f"hp_h_{hp}")
+    with c2:
+        hp_area = st.number_input(f"High part #{hp+1} area (ft^2)", 0.0, 2000.0, 0.0, 1.0, key=f"hp_a_{hp}")
+    qualifies = (hp_height > 10.0 and hp_area > 64.0)
+    high_parts.append({"height": hp_height, "area_ft2": hp_area, "qualifies": qualifies})
+    if qualifies:
+        qualifying_hp_area_ft2 += hp_area
+        qualifying_hp_count += 1
 
 # ================= Summary & Takeoff =================
 if rooms_data:
@@ -211,11 +245,9 @@ if rooms_data:
     screws_qty = math.ceil(total_waste_ft2 * screws_per_sqft)
     screws_boxes = math.ceil(screws_qty / screws_per_box) if screws_per_box > 0 else 0
 
-    # Corner bead (pieces) via factor
     corner_bead_lf = (total_waste_ft2 / 1000.0) * corner_bead_lf_per_1000
     corner_bead_pcs = math.ceil(corner_bead_lf / corner_bead_piece_len_ft) if corner_bead_piece_len_ft > 0 else 0
 
-    # Resilient channel (pieces)
     rc_pieces = 0
     if include_resilient_channel:
         rc_pieces = math.ceil(rc_total_lf / rc_piece_length_ft) if rc_piece_length_ft > 0 else 0
@@ -226,7 +258,7 @@ if rooms_data:
         st.write(f"Sheets ({sheet_size}): **{sheets}**")
         st.write(f"Mud: **{mud_gal:,.1f} gal** (~{mud_pails} pails @ {mud_pail_gal:g} gal)")
     with colB:
-        st.write(f"Tape: **{tape_rolls} rolls** (≈ {int(tape_sqft_per_roll)} ft^2/roll)")
+        st.write(f"Tape: **{tape_rolls} rolls** (approx)")
         st.write(f"Screws: **{screws_qty:,} pcs** (~{screws_boxes} boxes @ {screws_per_box} pcs)")
         st.write(f"Corner bead: **{corner_bead_pcs} pcs** (~{corner_bead_lf:,.0f} lf, {corner_bead_piece_len_ft:g} ft pieces)")
     with colC:
@@ -235,48 +267,79 @@ if rooms_data:
         else:
             st.write("Resilient channel: **not included**")
 
-    # ---------- PRICING ----------
+    # ---------- COSTS ----------
     st.markdown("---")
-    st.subheader("Pricing")
+    st.subheader("Costs and Pricing")
 
-    # Chargeable area uses with-waste + high areas
-    charge_area_ft2 = total_waste_ft2 + high_areas_ft2
+    # Materials cost
+    mat_board_cost = sheets * cost_per_sheet
+    mat_mud_cost = mud_pails * cost_mud_pail
+    mat_tape_cost = tape_rolls * cost_tape_roll
+    mat_screws_cost = screws_boxes * cost_screws_box
+    mat_corner_cost = corner_bead_pcs * cost_corner_bead_piece
+    mat_rc_cost = rc_pieces * cost_rc_piece if include_resilient_channel else 0.0
+    mat_pot_lights_cost = pot_light_count * pot_light_cost
+
+    materials_breakdown = [
+        ("Board (sheets)", sheets, mat_board_cost),
+        ("Mud (pails)", mud_pails, mat_mud_cost),
+        ("Tape (rolls)", tape_rolls, mat_tape_cost),
+        ("Screws (boxes)", screws_boxes, mat_screws_cost),
+        ("Corner bead (pieces)", corner_bead_pcs, mat_corner_cost),
+    ]
+    if include_resilient_channel:
+        materials_breakdown.append(("Resilient channel (pieces)", rc_pieces, mat_rc_cost))
+    materials_breakdown.append(("Pot lights (qty)", pot_light_count, mat_pot_lights_cost))
+
+    material_subtotal = sum(v for _, _, v in materials_breakdown)
+
+    # Labour area: chargeable area = with-waste plus any qualifying high-part area (not in materials)
+    charge_area_ft2 = total_waste_ft2 + qualifying_hp_area_ft2
     charge_area_m2 = charge_area_ft2 * FT2_TO_M2
 
-    # Area price by chosen unit rate
-    if price_per_sqft > 0:
-        area_price = charge_area_ft2 * price_per_sqft
-        area_rate_label = f"${price_per_sqft:.2f}/ft^2"
-    elif price_per_sqm > 0:
-        area_price = charge_area_m2 * price_per_sqm
-        area_rate_label = f"${price_per_sqm:.2f}/m^2"
+    if labour_rate_sqft > 0:
+        labour_area_cost = charge_area_ft2 * labour_rate_sqft
+        labour_area_label = f"Area labour @ ${labour_rate_sqft:.2f}/ft^2"
+    elif labour_rate_sqm > 0:
+        labour_area_cost = charge_area_m2 * labour_rate_sqm
+        labour_area_label = f"Area labour @ ${labour_rate_sqm:.2f}/m^2"
     else:
-        area_price = 0.0
-        area_rate_label = "(no area rate)"
+        labour_area_cost = 0.0
+        labour_area_label = "Area labour @ $0"
 
-    # Sheets cost
-    sheets_cost = sheets * cost_per_sheet
+    # Labour high-parts: prefer flat per part if provided, else per ft^2 of qualifying area
+    if labour_high_part_flat > 0 and qualifying_hp_count > 0:
+        labour_high_parts_cost = qualifying_hp_count * labour_high_part_flat
+        labour_high_label = f"High-parts labour @ ${labour_high_part_flat:.2f} each (x{qualifying_hp_count})"
+    else:
+        labour_high_parts_cost = qualifying_hp_area_ft2 * labour_high_part_rate_sqft
+        labour_high_label = f"High-parts labour @ ${labour_high_part_rate_sqft:.2f}/ft^2 (area {qualifying_hp_area_ft2:.0f} ft^2)"
 
-    # Pot lights
-    pot_lights_total = pot_light_count * pot_light_cost
+    labour_subtotal = labour_area_cost + labour_high_parts_cost
 
-    # Subtotals / tax / cash
-    subtotal_no_tax = area_price + sheets_cost + pot_lights_total
+    subtotal_no_tax = material_subtotal + labour_subtotal
     total_with_tax = subtotal_no_tax * (1.0 + tax_pct / 100.0) if tax_pct > 0 else subtotal_no_tax
-    cash_price = subtotal_no_tax  # as requested: cash price (no tax)
+    cash_price = subtotal_no_tax  # no tax
 
-    p1, p2, p3, p4 = st.columns(4)
-    p1.metric("Chargeable area (ft^2)", f"{charge_area_ft2:,.2f}")
-    p2.metric("Chargeable area (m^2)", f"{charge_area_m2:,.2f}")
-    p3.metric("Area price", f"${area_price:,.2f}")
-    p4.metric("Sheets cost", f"${sheets_cost:,.2f}")
+    # ---- Show breakdown ----
+    st.markdown("#### Material Costs")
+    for label, qty, cost in materials_breakdown:
+        st.write(f"- {label}: {qty} → ${cost:,.2f}")
+    st.write(f"**Material Subtotal:** ${material_subtotal:,.2f}")
 
-    st.write(f"Area rate used: **{area_rate_label}**")
-    st.write(f"Pot lights: **{pot_light_count} x ${pot_light_cost:,.2f} = ${pot_lights_total:,.2f}**")
-    st.success(f"Subtotal (no tax): ${subtotal_no_tax:,.2f} | Total with tax ({tax_pct:.1f}%): ${total_with_tax:,.2f} | Cash price: ${cash_price:,.2f}")
+    st.markdown("#### Labour Costs")
+    st.write(f"- {labour_area_label}: ${labour_area_cost:,.2f}")
+    st.write(f"- {labour_high_label}: ${labour_high_parts_cost:,.2f}")
+    st.write(f"**Labour Subtotal:** ${labour_subtotal:,.2f}")
+
+    st.markdown("#### Totals")
+    st.write(f"- **Subtotal (no tax):** ${subtotal_no_tax:,.2f}")
+    st.write(f"- **Total with tax ({tax_pct:.1f}%):** ${total_with_tax:,.2f}")
+    st.success(f"**Cash price (no tax): ${cash_price:,.2f}**")
 
     # ---------- Downloads ----------
     st.markdown("### Downloads")
+
     df_display = df[show_cols]
     csv = df_display.to_csv(index=False).encode("utf-8")
     st.download_button("Download CSV (per-room)", csv, file_name="drywall_per_room.csv", mime="text/csv")
@@ -293,7 +356,7 @@ if rooms_data:
         "Material Takeoff:",
         f"- Board: {total_waste_ft2:,.0f} ft^2 → {sheets} sheets ({sheet_size})",
         f"- Mud: {mud_gal:,.1f} gal (~{mud_pails} pails @ {mud_pail_gal:g} gal)",
-        f"- Tape: {tape_rolls} rolls (≈ {int(tape_sqft_per_roll)} ft^2/roll)",
+        f"- Tape: {tape_rolls} rolls",
         f"- Screws: {screws_qty:,} pcs (~{screws_boxes} boxes @ {screws_per_box} pcs)",
         f"- Corner bead: {corner_bead_pcs} pcs (~{corner_bead_lf:,.0f} lf, {corner_bead_piece_len_ft:g} ft pieces)",
     ]
@@ -304,15 +367,25 @@ if rooms_data:
 
     lines += [
         "",
-        "Pricing:",
-        f"- Chargeable area: {charge_area_ft2:.2f} ft^2 ({charge_area_m2:.2f} m^2)",
-        f"- Area price ({area_rate_label}): ${area_price:,.2f}",
-        f"- Sheets cost: ${sheets_cost:,.2f}",
-        f"- Pot lights: {pot_light_count} x ${pot_light_cost:.2f} = ${pot_lights_total:,.2f}",
+        "Costs:",
+    ]
+    for label, qty, cost in materials_breakdown:
+        lines.append(f"- {label}: {qty} → ${cost:,.2f}")
+    lines += [
+        f"- Material Subtotal: ${material_subtotal:,.2f}",
+        f"- {labour_area_label}: ${labour_area_cost:,.2f}",
+        f"- {labour_high_label}: ${labour_high_parts_cost:,.2f}",
+        f"- Labour Subtotal: ${labour_subtotal:,.2f}",
         f"- Subtotal (no tax): ${subtotal_no_tax:,.2f}",
         f"- Total with tax ({tax_pct:.1f}%): ${total_with_tax:,.2f}",
         f"- Cash price (no tax): ${cash_price:,.2f}",
+        "",
+        "High Parts Entered:",
+        f"- Count entered: {num_high_parts}",
+        f"- Qualifying (height>10 ft and area>64 ft^2): {qualifying_hp_count}",
+        f"- Qualifying area total: {qualifying_hp_area_ft2:.2f} ft^2",
     ]
+
     txt = "\n".join(lines)
     st.download_button("Download TXT (summary)", txt, file_name="drywall_summary.txt", mime="text/plain")
 
